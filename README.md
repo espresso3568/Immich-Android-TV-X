@@ -5,6 +5,10 @@ with album shuffle and complete, shuffled multi-album screensaver rounds.
 Application ID: `com.jerry.immichtv.plus` (installs alongside the original app).
 See [the Traditional Chinese installation and release guide](docs/release-guide.md).
 
+Source fork: [espresso3568/Immich-Android-TV-X](https://github.com/espresso3568/Immich-Android-TV-X).
+APKs are built locally for personal use; GitHub CI does not upload APKs or publish releases.
+See [upstream update and contribution notes](docs/upstream-updates.md).
+
 ## License and attribution
 
 Immich TV Plus is an unofficial modified version, based on
