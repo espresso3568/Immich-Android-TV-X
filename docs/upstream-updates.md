@@ -51,4 +51,10 @@ GitHub 官方的 [Fork 同步說明](https://docs.github.com/en/pull-requests/ho
 
 對原作的 PR 應從最新 upstream 建立乾淨分支，只帶相關功能與測試。Plus 品牌、Application ID、自用簽署、Windows 模擬器與不相關認證修正各自保留，不混入隨機功能 PR。本次主功能 commit 包含多種客製修改，不能直接整顆當成上游的隨機功能 PR。
 
-本次只整理建議及更新來源，沒有代表使用者向原作發送留言、開 issue 或提交 PR。
+最初僅整理建議及更新來源。後續依使用者明確授權，已於 2026-10-20 提交 [原作 PR #283](https://github.com/giejay/Immich-Android-TV/pull/283)：**Shuffle complete album playlists and reshuffle each playback round**。
+
+PR 使用 `feature/complete-album-shuffle` 分支，直接從原作 `037cb7c` 建立，只有一個功能提交 `a7c9b27`、19 個功能及測試檔案，不包含 Plus 主分支的提交歷史。原作名稱、Application ID、建置及登入方式保留；沒有帶入私人版設定、API Key、伺服器位置、簽署資料、APK 或個人操作文件。已核對本機及 GitHub 實際公開的差異，網址字面值均可追溯到原作既有測試範例；提交作者使用 GitHub noreply 郵件。
+
+該獨立分支的 App 151 項及播放器 7 項，共 158 項測試全數通過，Debug 建置成功。私人版的額外認證修正及測試未混入此 PR，因此數量與 Plus 主分支的 174 項不同。PR 說明另有清楚區分：先前的 Android TV 模擬器實測來自相同隨機實作的下游版本，這次乾淨原作分支則另行完成自動測試及建置。
+
+提交當下，PR 為正式開啟狀態，GitHub Android CI 顯示 `action_required`，等待原作維護者處理；後續審查及檢查狀態以 PR 頁面為準。
