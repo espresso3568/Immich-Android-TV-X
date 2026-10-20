@@ -1,3 +1,5 @@
+// Modified for Immich TV Plus on 2026-10-20: shuffle-round configuration and initial loading.
+// Original MediaSliderView code remains under Apache-2.0; see mediaslider/LICENSE.md.
 package nl.giejay.mediaslider.config
 
 import nl.giejay.mediaslider.adapter.MetaDataItem
@@ -33,7 +35,9 @@ class MediaSliderConfiguration(
     val showDateTopLeft: Boolean = false,
     var controllerPlugins: List<SliderControllerPlugin> = emptyList(),
     var viewPlugins: List<SliderViewPlugin<*>> = emptyList(),
-    var keyEventPlugins: List<SliderKeyEventPlugin> = emptyList()
+    var keyEventPlugins: List<SliderKeyEventPlugin> = emptyList(),
+    /** Only for a complete, finite list: shuffle again when playback wraps. */
+    val shuffleOnRepeat: Boolean = false
 ) {
     val isGradiantOverlayVisible: Boolean
         get() = (metaDataConfig.isNotEmpty()) && this.gradiantOverlay

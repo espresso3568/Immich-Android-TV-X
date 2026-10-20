@@ -38,6 +38,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import timber.log.Timber
 
 data class ApiClientConfig(
     val hostName: String,
@@ -119,6 +120,23 @@ class ApiClient(private val config: ApiClientConfig) {
         .build()
 
     private val service: ApiService = retrofit.create(ApiService::class.java)
+
+    suspend fun validateAuthentication(): Either<String, Unit> =
+        executeAPICall(200) {
+            service.validateAuthentication().also { response ->
+                val raw = response.raw()
+                // Only booleans/counts/status: never log credentials, URLs or response headers.
+                Timber.i(
+                    "Authentication validation: status=%d, keyAttached=%b, keyUnchanged=%b, headerCount=%d, redirected=%b",
+                    response.code(), !raw.request.header("x-api-key").isNullOrBlank(),
+                    raw.request.header("x-api-key") == config.apiKey.trim(),
+                    raw.request.headers.values("x-api-key").size, raw.priorResponse != null
+                )
+            }
+        }.flatMap { response ->
+            if (response.authStatus) Either.Right(Unit)
+            else Either.Left("Immich did not confirm authentication.")
+        }
 
     private suspend fun search(searchRequest: SearchRequest): Either<String, SearchResponse> {
         return executeAPICall(200) { service.listAssets(searchRequest) }

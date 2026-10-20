@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import arrow.core.Either
 import arrow.core.getOrElse
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -12,6 +13,7 @@ import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.api.ApiClient
 import nl.giejay.android.tv.immich.api.ApiClientConfig
 import nl.giejay.android.tv.immich.api.MAX_SEARCH_PAGE_SIZE
+import nl.giejay.android.tv.immich.api.loadAllAlbumAssets
 import nl.giejay.android.tv.immich.api.model.Asset
 import nl.giejay.android.tv.immich.api.model.AssetResponse
 import nl.giejay.android.tv.immich.shared.prefs.API_KEY
@@ -38,10 +40,10 @@ import nl.giejay.android.tv.immich.shared.prefs.SLIDER_ONLY_USE_THUMBNAILS
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_PAN_EFFECT
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_ZOOM_EFFECT
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_ZOOM_SCROLL_PANORAMAS
-import nl.giejay.android.tv.immich.shared.util.Utils.pmap
 import nl.giejay.android.tv.immich.shared.util.toSliderItems
 import nl.giejay.android.tv.immich.slider.FavoriteService
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
+import nl.giejay.mediaslider.model.SliderItemViewHolder
 import nl.giejay.mediaslider.util.LoadMore
 import nl.giejay.mediaslider.util.LoadMoreResult
 import timber.log.Timber
@@ -72,7 +74,9 @@ internal fun buildScreenSaverConfiguration(
     assets: List<Asset>,
     loadMore: LoadMore?,
     scope: CoroutineScope,
-    favoriteService: FavoriteService
+    favoriteService: FavoriteService,
+    shuffleOnRepeat: Boolean = false,
+    preparedItems: List<SliderItemViewHolder>? = null
 ): MediaSliderConfiguration {
     val enabledPlugins = PreferenceManager.createEnabledSliderPlugins(scope, favoriteService)
     return MediaSliderConfiguration(
@@ -80,7 +84,7 @@ internal fun buildScreenSaverConfiguration(
         PreferenceManager.get(SCREENSAVER_INTERVAL),
         PreferenceManager.get(SLIDER_ONLY_USE_THUMBNAILS),
         PreferenceManager.get(SCREENSAVER_PLAY_SOUND),
-        assets.toSliderItems(keepOrder = false, mergePortrait = PreferenceManager.get(SLIDER_MERGE_PORTRAIT_PHOTOS)),
+        preparedItems ?: assets.toSliderItems(keepOrder = false, mergePortrait = PreferenceManager.get(SLIDER_MERGE_PORTRAIT_PHOTOS)),
         loadMore,
         animationSpeedMillis = PreferenceManager.get(SLIDER_ANIMATION_SPEED),
         maxCutOffHeight = PreferenceManager.get(SLIDER_MAX_CUT_OFF_HEIGHT),
@@ -97,7 +101,8 @@ internal fun buildScreenSaverConfiguration(
         showDateTopLeft = PreferenceManager.get(SCREENSAVER_SHOW_DATE_TOP_LEFT),
         controllerPlugins = enabledPlugins.controllerPlugins,
         viewPlugins = enabledPlugins.viewPlugins,
-        keyEventPlugins = enabledPlugins.keyEventPlugins
+        keyEventPlugins = enabledPlugins.keyEventPlugins,
+        shuffleOnRepeat = shuffleOnRepeat
     )
 }
 
@@ -197,60 +202,40 @@ class ScreenSaverAssetLoader(
 
     private suspend fun loadImagesFromAlbums(albums: List<String>) {
         try {
-            if (albums.isNotEmpty()) {
-                val response = filteredAssetLoader.load(fetch =
-                    {
-                        loadNextAssetsFromAlbums(albums, random = true).fold(
-                            {
-                                Timber.w("Could not load random assets for albums $albums, falling back to all album assets")
-                                loadNextAssetsFromAlbums(albums, random = false)
-                            },
-                            {
-                                Either.Right(it)
-                            }
-                        )
-                    }, retry = {
-                    // load assets not randomly. This can happen because the logged in User/API key does not have any own photo's, only shared access
-                    // shared photos are not returned yet for the Random endpoint (ongoing feature request).
-                    Timber.w("Random asset search for album was empty for albums $albums, now using the regular search assets in album endpoint")
-                    loadNextAssetsFromAlbums(albums, random = false)
-                }).getOrElse { AssetResponse(emptyList(), false) }
-
-                setInitialAssets(
-                    response.assets.shuffled(),
-                    if (response.canLoadMore) {
-                        createLoadMore { loadNextAssetsFromAlbums(albums, random = false) }
-                    } else null
-                )
-            } else {
+            if (albums.isEmpty()) {
                 failAndExit(R.string.set_albums_screensaver_error)
+                return
             }
-        } catch (e: Exception) {
-            Timber.e(e, "Could not fetch assets from Immich for Screensaver")
-            failAndExit(R.string.could_not_load_assets)
-        }
-    }
-
-    private suspend fun loadNextAssetsFromAlbums(albums: List<String>, random: Boolean = false): Either<String, AssetResponse> {
-        val contentType = if (PreferenceManager.get(SCREENSAVER_INCLUDE_VIDEOS)) ContentType.ALL else ContentType.IMAGE
-        if (random) {
-            val pageCount = (50 / albums.size).coerceAtLeast(1)
-            val responses = albums.pmap { albumId ->
+            val contentType = if (PreferenceManager.get(SCREENSAVER_INCLUDE_VIDEOS)) ContentType.ALL else ContentType.IMAGE
+            loadAllAlbumAssets(albums) { albumId, page ->
                 apiClient.listAssets(
-                    page = 1,
-                    pageCount = pageCount,
-                    random = true,
+                    page = page,
+                    pageCount = MAX_SEARCH_PAGE_SIZE,
+                    random = false,
                     contentType = contentType,
                     albumIds = listOf(albumId)
                 )
-            }
-            responses.firstOrNull { it.isLeft() }?.let { return it }
-            return Either.Right(AssetResponse(
-                responses.flatMap { it.getOrElse { AssetResponse(emptyList(), true) }.assets }.shuffled(),
-                true
-            ))
-        } else {
-            return apiClient.listAssetsFromAlbum(albums, contentType, pageCount = MAX_SEARCH_PAGE_SIZE).map { AssetResponse(it.assets.shuffled(), it.canLoadMore) }
+            }.fold(
+                { error ->
+                    Timber.w("Could not load all screensaver albums: %s", error)
+                    failAndExit(R.string.could_not_load_assets)
+                },
+                { assets ->
+                    // A fresh permutation on every start; no progress survives this session.
+                    val filtered = filterExcludedAssets(assets, excludedAssetIds).shuffled()
+                    val items = filtered.toSliderItems(
+                        keepOrder = true,
+                        mergePortrait = PreferenceManager.get(SLIDER_MERGE_PORTRAIT_PHOTOS)
+                    )
+                    Timber.i("Prepared shuffled screensaver: %d unique assets, %d pages", filtered.size, items.size)
+                    setInitialAssets(filtered, null, shuffleOnRepeat = true, preparedItems = items)
+                }
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.e(e, "Could not fetch assets from Immich for Screensaver")
+            failAndExit(R.string.could_not_load_assets)
         }
     }
 
@@ -259,7 +244,12 @@ class ScreenSaverAssetLoader(
         host.exitScreenSaver()
     }
 
-    private suspend fun setInitialAssets(assets: List<Asset>, loadMore: (suspend () -> LoadMoreResult)?) = withContext(Dispatchers.Main) {
+    private suspend fun setInitialAssets(
+        assets: List<Asset>,
+        loadMore: LoadMore?,
+        shuffleOnRepeat: Boolean = false,
+        preparedItems: List<SliderItemViewHolder>? = null
+    ) = withContext(Dispatchers.Main) {
         if (assets.isEmpty()) {
             host.showScreenSaverMessage(R.string.no_assets_for_screensaver, longDuration = true)
             if (host.exitWhenNothingToShow) {
@@ -267,7 +257,7 @@ class ScreenSaverAssetLoader(
             }
         } else {
             host.onScreenSaverConfigurationReady(
-                buildScreenSaverConfiguration(assets, loadMore, scope, favoriteService)
+                buildScreenSaverConfiguration(assets, loadMore, scope, favoriteService, shuffleOnRepeat, preparedItems)
             )
         }
     }

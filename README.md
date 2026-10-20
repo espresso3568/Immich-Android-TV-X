@@ -1,4 +1,23 @@
-# Immich Android TV
+# Immich TV Plus
+
+Personal Android TV fork of [giejay/Immich-Android-TV](https://github.com/giejay/Immich-Android-TV),
+with album shuffle and complete, shuffled multi-album screensaver rounds.
+Application ID: `com.jerry.immichtv.plus` (installs alongside the original app).
+See [the Traditional Chinese installation and release guide](docs/release-guide.md).
+
+## License and attribution
+
+Immich TV Plus is an unofficial modified version, based on
+[xyzhong987/Immich-Android-TV-X](https://github.com/xyzhong987/Immich-Android-TV-X)
+and originally [giejay/Immich-Android-TV](https://github.com/giejay/Immich-Android-TV).
+Changes dated 2026-10-20 add complete shuffle rounds, Plus branding and application ID,
+independent release signing, PC testing tools, and authentication fixes.
+The application as a whole remains under the GNU GPL version 3: see [LICENSE](LICENSE).
+The vendored MediaSliderView retains its [Apache 2.0 license](mediaslider/LICENSE.md).
+Original copyright and license notices are retained.
+
+See [NOTICE.md](NOTICE.md) and the [Traditional Chinese licensing notes](docs/licensing.md)
+for attribution and the source-code requirements when sharing an APK.
 
 Immich is a self hosted backup solution for photos and videos. Current features include:
 
@@ -78,12 +97,13 @@ When setting up your API key in Immich, make sure to grant the following permiss
 
 ## Build steps
 
-1. Clone project with `git clone --recurse git@github.com:giejay/Immich-Android-TV.git`
-2. Create an account at firebase and create a google-services.json file, or
-   `cp app/google-services.example app/google-services.json`
-3. copy app/strings_other.xml.example to app/src/main/res/values/strings_other.xml and modify
-   the address and API keys for your demo server.
-4. Build apk with `./gradlew assembleRelease`
+1. Prepare JDK 17 and Android SDK API 37 / Build Tools 36.0.0. The root Gradle wrapper is the build entry point.
+2. Set the SDK path in `local.properties`. Firebase is disabled by default; server credentials are entered on the TV.
+3. Configure your own Release keystore through the `RELEASE_KEYSTORE_*` / `RELEASE_KEY_*` environment variables.
+4. On the configured Windows workstation, run `scripts/build-release.ps1` to test, build, verify and copy the APK to `artifacts/`.
+
+Firebase remains optional (`-PenableFirebase=true`) and requires your own matching `app/google-services.json`.
+Never commit keystores or passwords. Read [the release guide](docs/release-guide.md) before rebuilding or restoring signing keys.
 
 ## Support the project
 
@@ -109,5 +129,5 @@ might consider buying me a coffee or a beer:
    192.168.xx.xx.
 5. If you have an Amazon Fire TV, first execute this command and reboot after: 'adb shell settings put secure amazon_ambient_enabled 0'
 6. Execute the following command: 'adb shell settings put secure
-   screensaver_components nl.giejay.android.tv.immich/.screensaver.ScreenSaverService'
+   screensaver_components com.jerry.immichtv.plus/nl.giejay.android.tv.immich.screensaver.ScreenSaverService'
 7. Done!

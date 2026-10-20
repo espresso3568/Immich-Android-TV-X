@@ -1,0 +1,9 @@
+<resources>
+    <string name="checking_immich_connection">正在驗證 Immich 連線…</string>
+    <string name="sign_in_details_changed">驗證期間登入資料已變更，請重新提交。</string>
+    <string name="sign_in_check_failed">登入驗證失敗：%1$s</string>
+    <string name="sign_in_storage_failed">API Key 未能正確儲存，請重試。</string>
+    <string name="shuffle_playback">隨機播放</string>
+    <string name="shuffle_playback_desc">將整本相簿打散播放，每輪播完重新洗牌；相簿瀏覽仍保留日期排序。</string>
+    <string name="set_albums_screensaver_desc">合併所選相簿並隨機播放，每次啟動及每輪播完重新洗牌。</string>
+</resources>

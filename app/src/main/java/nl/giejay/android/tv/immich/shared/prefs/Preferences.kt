@@ -117,9 +117,8 @@ private fun startScreenSaverIntent(context: Context) {
             }
             return dialog.show()
         }
-        context.startActivity(intent);
     }
-
+    context.startActivity(intent)
 }
 
 private fun intentAvailable(intent: Intent, context: Context): Boolean {
@@ -374,6 +373,12 @@ data class PHOTOS_SORTING_FOR_SPECIFIC_ALBUM(val albumId: String, val albumName:
         createPref.summary = PreferenceManager.get(this).getTitle()
         return createPref
     }
+}
+
+data class ALBUM_SHUFFLE(val albumId: String) : BooleanPref(false,
+    ImmichApplication.appContext!!.getString(R.string.shuffle_playback),
+    ImmichApplication.appContext!!.getString(R.string.shuffle_playback_desc)) {
+    override fun key(): String = "album_shuffle_$albumId"
 }
 
 data class FILTER_CONTENT_TYPE_FOR_SPECIFIC_ALBUM(val albumId: String, val albumName: String) : EnumByTitlePref<ContentType>(ContentType.ALL,
@@ -651,7 +656,7 @@ data class AlbumDetailsSettingsScreen(val albumId: String,
                                       val albumName: String) : PrefScreen(ImmichApplication.appContext!!.getString(R.string.settings_for, albumName),
     "album_settings_${albumId}",
     listOf(
-        PrefCategory(ImmichApplication.appContext!!.getString(R.string.ordering), listOf(PHOTOS_SORTING_FOR_SPECIFIC_ALBUM(albumId, albumName))),
+        PrefCategory(ImmichApplication.appContext!!.getString(R.string.ordering), listOf(PHOTOS_SORTING_FOR_SPECIFIC_ALBUM(albumId, albumName), ALBUM_SHUFFLE(albumId))),
         PrefCategory(ImmichApplication.appContext!!.getString(R.string.filtering), listOf(FILTER_CONTENT_TYPE_FOR_SPECIFIC_ALBUM(albumId, albumName)))
     )
 )

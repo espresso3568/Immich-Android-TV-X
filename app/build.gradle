@@ -2,21 +2,27 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias libs.plugins.android.application
-    alias libs.plugins.google.gms.google.services
-    alias libs.plugins.google.firebase.crashlytics
     id 'kotlin-parcelize'
     alias libs.plugins.navigation.safeargs.kotlin
     alias libs.plugins.google.devtools.ksp
 }
 
+// The personal APK works without a Firebase account or upstream service credentials.
+def firebaseEnabled = providers.gradleProperty('enableFirebase').orElse('false').get().toBoolean()
+if (firebaseEnabled) {
+    apply plugin: 'com.google.gms.google-services'
+    apply plugin: 'com.google.firebase.crashlytics'
+}
+
 android {
     compileSdk = 37
     defaultConfig {
-        applicationId "nl.giejay.android.tv.immich"
+        applicationId "com.jerry.immichtv.plus"
         minSdkVersion 24
         targetSdkVersion 37
-        versionCode 148
-        versionName "6.2.0"
+        versionCode 3
+        versionName "1.0.2"
+        buildConfigField 'boolean', 'FIREBASE_ENABLED', firebaseEnabled.toString()
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         testOptions.unitTests.includeAndroidResources = true
@@ -24,10 +30,10 @@ android {
 
     signingConfigs {
         release {
-            storeFile file(System.getenv("RELEASE_KEYSTORE_PATH") ?: "keystore")
-            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "dummy"
-            keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: "immich"
-            keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: "dummy"
+            storeFile file(System.getenv("RELEASE_KEYSTORE_PATH") ?: "release-signing-not-configured.jks")
+            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD")
+            keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: "immich-tv-plus"
+            keyPassword System.getenv("RELEASE_KEY_PASSWORD")
         }
     }
 
@@ -65,7 +71,7 @@ android {
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.forEach { output ->
-            output.outputFileName.set("ImmichTV-${output.versionName.get()}.apk")
+            output.outputFileName.set("ImmichTVPlus-${output.versionName.get()}-${variant.name}.apk")
         }
     }
 }

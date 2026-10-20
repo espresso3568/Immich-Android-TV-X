@@ -11,10 +11,12 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import nl.giejay.android.tv.immich.ImmichApplication
+import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.api.ApiClient
 import nl.giejay.android.tv.immich.api.MAX_SEARCH_PAGE_SIZE
 import nl.giejay.android.tv.immich.api.model.Asset
 import nl.giejay.android.tv.immich.api.model.AssetResponse
+import nl.giejay.android.tv.immich.api.model.AssetExifInfo
 import nl.giejay.android.tv.immich.api.model.Tag
 import nl.giejay.android.tv.immich.shared.prefs.API_KEY
 import nl.giejay.android.tv.immich.shared.prefs.ContentType
@@ -24,7 +26,10 @@ import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
 import nl.giejay.android.tv.immich.shared.prefs.Pref
 import nl.giejay.android.tv.immich.shared.prefs.SCREENSAVER_ALBUMS
 import nl.giejay.android.tv.immich.shared.prefs.SCREENSAVER_TYPE
+import nl.giejay.android.tv.immich.shared.prefs.SCREENSAVER_INCLUDE_VIDEOS
+import nl.giejay.android.tv.immich.shared.prefs.SLIDER_MERGE_PORTRAIT_PHOTOS
 import nl.giejay.android.tv.immich.slider.FavoriteService
+import nl.giejay.android.tv.immich.shared.util.toSliderItems
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
 import nl.giejay.mediaslider.plugin.MediaRemoteControlsKeyEventPlugin
 import org.junit.After
@@ -35,10 +40,8 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
-import org.mockito.kotlin.isNull
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
-import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -104,51 +107,124 @@ class ScreenSaverAssetLoaderTest {
     }
 
     @Test
-    fun `start falls back to full album fetch when random album search returns no assets`() = runLoaderTest(
+    fun `album screensaver loads all pages and overlapping albums once without random sampling`() = runLoaderTest(
         type = ScreenSaverType.ALBUMS,
-        albums = setOf("shared-album"),
+        albums = linkedSetOf("shared-album", "second-album"),
         setupMocks = { apiClient ->
+            setPreference(SLIDER_MERGE_PORTRAIT_PHOTOS, false)
             whenever(
                 apiClient.listAssets(
                     page = any(),
-                    pageCount = any(),
-                    random = eq(true),
+                    pageCount = eq(MAX_SEARCH_PAGE_SIZE),
+                    random = eq(false),
                     order = any(),
                     personIds = any(),
                     fromDate = anyOrNull(),
                     endDate = anyOrNull(),
                     contentType = eq(ContentType.IMAGE),
-                    albumIds = eq(listOf("shared-album"))
+                    albumIds = any()
                 )
-            ).thenReturn(Either.Right(AssetResponse(emptyList(), true)))
-
-            whenever(
-                apiClient.listAssetsFromAlbum(
-                    albumIds = eq(listOf("shared-album")),
-                    contentType = eq(ContentType.IMAGE),
-                    pageCount = eq(1000)
-                )
-            ).thenReturn(Either.Right(AssetResponse(listOf(asset("shared-asset")), false)))
+            ).thenAnswer { call ->
+                when (call.getArgument<List<String>>(8).single() to call.getArgument<Int>(0)) {
+                    "shared-album" to 1 -> Either.Right(AssetResponse(listOf(asset("a"), asset("b")), true))
+                    "shared-album" to 2 -> Either.Right(AssetResponse(listOf(asset("c")), false))
+                    "second-album" to 1 -> Either.Right(AssetResponse(listOf(asset("b"), asset("d")), false))
+                    else -> error("Unexpected album page")
+                }
+            }
         }
     ) { actual, apiClient ->
-        verify(apiClient, times(1)).listAssets(
-            eq(1),
-            eq(50),
-            eq(true),
-            any(),
-            any(),
-            isNull(),
-            isNull(),
-            eq(ContentType.IMAGE),
-            eq(listOf("shared-album"))
+        assertThat(actual.items.flatMap { it.ids() }).containsExactly("a", "b", "c", "d")
+        assertThat(actual.shuffleOnRepeat).isTrue()
+        assertThat(actual.loadMore).isNull()
+        verify(apiClient, never()).listAssets(
+            any(), any(), eq(true), any(), any(), anyOrNull(), anyOrNull(), any(), any()
         )
-        verify(apiClient, times(1)).listAssetsFromAlbum(
-            eq(listOf("shared-album")),
-            eq(ContentType.IMAGE),
-            eq(1000)
-        )
-        assertThat(actual.items.single().ids()).containsExactly("shared-asset")
     }
+
+    @Test
+    fun `album screensaver keeps enabled videos and filters excluded ids and tags`() = runLoaderTest(
+        type = ScreenSaverType.ALBUMS,
+        albums = setOf("mixed-album"),
+        excludedAlbums = setOf("excluded-album"),
+        setupMocks = { apiClient ->
+            setPreference(SCREENSAVER_INCLUDE_VIDEOS, true)
+            val tagged = asset("tagged").copy(tags = listOf(Tag(null, java.util.Date(), "exclude_immich_tv", "")))
+            whenever(apiClient.listAssetsFromAlbum(any(), any(), any())).thenReturn(
+                Either.Right(AssetResponse(listOf(asset("excluded")), false))
+            )
+            whenever(apiClient.listAssets(
+                any(), any(), eq(false), any(), any(), anyOrNull(), anyOrNull(), eq(ContentType.ALL), any()
+            )).thenReturn(Either.Right(AssetResponse(
+                listOf(asset("image"), asset("video").copy(type = "VIDEO"), asset("excluded"), tagged), false
+            )))
+        }
+    ) { actual, _ ->
+        assertThat(actual.items.flatMap { it.ids() }).containsExactly("image", "video")
+        assertThat(actual.shuffleOnRepeat).isTrue()
+        assertThat(actual.loadMore).isNull()
+    }
+
+    @Test
+    fun `portrait pairing keeps every unique asset exactly once`() = runLoaderTest(
+        type = ScreenSaverType.ALBUMS,
+        albums = setOf("portrait-album"),
+        setupMocks = { apiClient ->
+            setPreference(SLIDER_MERGE_PORTRAIT_PHOTOS, true)
+            val portrait = AssetExifInfo(null, 6, 100, 200, null, null, null, null, null)
+            val photos = listOf(
+                asset("a").copy(exifInfo = portrait), asset("b").copy(exifInfo = portrait),
+                asset("c").copy(exifInfo = portrait), asset("wide")
+            )
+            // Also exercise the linear, order-preserving pairing path used outside screensavers.
+            val ordered = photos.toSliderItems(keepOrder = true, mergePortrait = true)
+            assertThat(ordered.flatMap { it.ids() }).containsExactly("a", "b", "c", "wide").inOrder()
+            assertThat(ordered.first().ids()).containsExactly("a", "b").inOrder()
+            whenever(apiClient.listAssets(
+                any(), any(), eq(false), any(), any(), anyOrNull(), anyOrNull(), any(), any()
+            )).thenReturn(Either.Right(AssetResponse(photos + photos.first(), false)))
+        }
+    ) { actual, _ ->
+        assertThat(actual.items.flatMap { it.ids() }).containsExactly("a", "b", "c", "wide")
+    }
+
+    @Test
+    fun `album page failure exits instead of playing a partial selection`() = runLoaderTest(
+        type = ScreenSaverType.ALBUMS,
+        albums = setOf("album"),
+        expectedMessage = R.string.could_not_load_assets,
+        expectExit = true,
+        setupMocks = { apiClient ->
+            whenever(apiClient.listAssets(
+                any(), any(), eq(false), any(), any(), anyOrNull(), anyOrNull(), any(), any()
+            )).thenAnswer { call ->
+                if (call.getArgument<Int>(0) == 1) Either.Right(AssetResponse(listOf(asset("first")), true))
+                else Either.Left("offline")
+            }
+        }
+    )
+
+    @Test
+    fun `fully excluded album reports no assets without retrying forever`() = runLoaderTest(
+        type = ScreenSaverType.ALBUMS,
+        albums = setOf("album"),
+        expectedMessage = R.string.no_assets_for_screensaver,
+        expectedLongDuration = true,
+        setupMocks = { apiClient ->
+            val tagged = asset("excluded").copy(tags = listOf(Tag(null, java.util.Date(), "exclude_immich_tv", "")))
+            whenever(apiClient.listAssets(
+                any(), any(), eq(false), any(), any(), anyOrNull(), anyOrNull(), any(), any()
+            )).thenReturn(Either.Right(AssetResponse(listOf(tagged), false)))
+        }
+    )
+
+    @Test
+    fun `missing album selection reports configuration error`() = runLoaderTest(
+        type = ScreenSaverType.ALBUMS,
+        expectedMessage = R.string.set_albums_screensaver_error,
+        expectExit = true,
+        setupMocks = {}
+    )
 
     @Test
     fun `loads random assets when type is RANDOM`() = runLoaderTest(
@@ -170,6 +246,8 @@ class ScreenSaverAssetLoaderTest {
         }
     ) { actual, _ ->
         assertThat(actual.items.single().ids()).containsExactly("random-asset")
+        assertThat(actual.shuffleOnRepeat).isFalse()
+        assertThat(actual.loadMore).isNotNull()
     }
 
     @Test
@@ -266,8 +344,11 @@ class ScreenSaverAssetLoaderTest {
         type: ScreenSaverType = ScreenSaverType.RANDOM,
         albums: Set<String> = emptySet(),
         excludedAlbums: Set<String> = emptySet(),
+        expectedMessage: Int? = null,
+        expectedLongDuration: Boolean = false,
+        expectExit: Boolean = false,
         setupMocks: suspend (ApiClient) -> Unit,
-        verifyResult: suspend (MediaSliderConfiguration, ApiClient) -> Unit
+        verifyResult: suspend (MediaSliderConfiguration, ApiClient) -> Unit = { _, _ -> }
     ) = runTest {
         setPreference(HOST_NAME, "https://example.com")
         setPreference(API_KEY, "api-key")
@@ -290,6 +371,13 @@ class ScreenSaverAssetLoaderTest {
         mockConstruction(MediaRemoteControlsKeyEventPlugin::class.java).use {
             loader.start().join()
 
+            if (expectedMessage != null) {
+                verify(host).showScreenSaverMessage(expectedMessage, expectedLongDuration)
+                verify(host, never()).onScreenSaverConfigurationReady(any())
+                if (expectExit) verify(host).exitScreenSaver()
+                else verify(host, never()).exitScreenSaver()
+                return@use
+            }
             val configurationCaptor = argumentCaptor<MediaSliderConfiguration>()
             verify(host).onScreenSaverConfigurationReady(configurationCaptor.capture())
             verify(host, never()).showScreenSaverMessage(any(), any())

@@ -2,12 +2,16 @@ package nl.giejay.android.tv.immich.assets
 
 import android.os.Bundle
 import android.view.View
+import android.widget.Toast
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import arrow.core.Either
 import arrow.core.getOrElse
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import nl.giejay.android.tv.immich.album.AlbumDetailsFragmentDirections
@@ -47,6 +51,8 @@ import nl.giejay.mediaslider.config.MediaSliderConfiguration
 import nl.giejay.mediaslider.util.LoadMore
 import nl.giejay.mediaslider.util.LoadMoreResult
 import nl.giejay.mediaslider.viewmodel.MediaSliderViewModel
+import nl.giejay.mediaslider.util.shuffledStartingAt
+import timber.log.Timber
 
 abstract class GenericAssetFragment : VerticalCardGridFragment<Asset>() {
     protected lateinit var currentFilter: ContentType
@@ -55,6 +61,7 @@ abstract class GenericAssetFragment : VerticalCardGridFragment<Asset>() {
     protected var excludedAssetIds: Set<String> = emptySet()
 
     private val sliderViewModel: MediaSliderViewModel by activityViewModels()
+    private var preparingPlaybackJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val sortingKey = getSortingKey()
@@ -118,6 +125,10 @@ abstract class GenericAssetFragment : VerticalCardGridFragment<Asset>() {
         return false
     }
 
+    protected open fun shouldShufflePlayback(): Boolean = false
+
+    protected open suspend fun loadPlaybackAssets(): Either<String, List<Asset>> = Either.Right(assets)
+
     override fun openPopUpMenu() {
         findNavController().navigate(
             HomeFragmentDirections.actionGlobalToSettingsDialog("generic_asset_settings")
@@ -132,49 +143,75 @@ abstract class GenericAssetFragment : VerticalCardGridFragment<Asset>() {
      * provide immediate visual feedback via a loading spinner.
      */
     override fun onItemClicked(card: Card) {
+        if (preparingPlaybackJob?.isActive == true) return
         progressBar?.visibility = View.VISIBLE
-        lifecycleScope.launch(Dispatchers.Default) {
-            val toSliderItems = assets.toSliderItems(
-                keepOrder = true,
-                mergePortrait = PreferenceManager.get(SLIDER_MERGE_PORTRAIT_PHOTOS)
-            )
-            val loadMore: LoadMore = suspend {
-                val moreAssets = loadMoreAssets()
-                // also load the data in the overview
-                setDataOnMain(moreAssets)
-                LoadMoreResult(
-                    moreAssets.toSliderItems(true, PreferenceManager.get(SLIDER_MERGE_PORTRAIT_PHOTOS)),
-                    moreAssets.isNotEmpty() && !allPagesLoaded
+        preparingPlaybackJob = viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val shuffle = shouldShufflePlayback()
+                val playbackAssets = if (shuffle) {
+                    loadPlaybackAssets().fold(
+                        { error -> throw IllegalStateException(error) },
+                        { filterItems(it).distinctBy { asset -> asset.id } }
+                    )
+                } else assets
+                val orderedItems = playbackAssets.toSliderItems(
+                    keepOrder = true,
+                    mergePortrait = PreferenceManager.get(SLIDER_MERGE_PORTRAIT_PHOTOS)
                 )
-            }
+                val toSliderItems = if (shuffle) shuffledStartingAt(
+                    orderedItems, orderedItems.firstOrNull { card.id in it.ids() }
+                ) else orderedItems
+                val loadMore: LoadMore? = if (shuffle) null else suspend {
+                    val moreAssets = loadMoreAssets()
+                    // also load the data in the overview
+                    setDataOnMain(moreAssets)
+                    LoadMoreResult(
+                        moreAssets.toSliderItems(true, PreferenceManager.get(SLIDER_MERGE_PORTRAIT_PHOTOS)),
+                        moreAssets.isNotEmpty() && !allPagesLoaded
+                    )
+                }
 
-            withContext(Dispatchers.Main) {
-                if (!isAdded) return@withContext
-                progressBar?.visibility = View.GONE
-                val config = MediaSliderConfiguration(
-                    toSliderItems.indexOfFirst { it.ids().contains(card.id) },
-                    PreferenceManager.get(SLIDER_INTERVAL),
-                    PreferenceManager.get(SLIDER_ONLY_USE_THUMBNAILS),
-                    isVideoSoundEnable = true,
-                    toSliderItems,
-                    loadMore,
-                    { item -> manualUpdatePosition(this@GenericAssetFragment.assets.indexOfFirst { item.ids().contains(it.id) }) },
-                    animationSpeedMillis = PreferenceManager.get(SLIDER_ANIMATION_SPEED),
-                    maxCutOffHeight = PreferenceManager.get(SLIDER_MAX_CUT_OFF_HEIGHT),
-                    maxCutOffWidth = PreferenceManager.get(SLIDER_MAX_CUT_OFF_WIDTH),
-                    glideTransformation = PreferenceManager.get(SLIDER_GLIDE_TRANSFORMATION),
-                    enableSlideAnimation = PreferenceManager.get(SCREENSAVER_ANIMATE_ASSET_SLIDE),
-                    gradiantOverlay = false,
-                    metaDataConfig = PreferenceManager.getAllMetaData(MetaDataScreen.VIEWER),
-                    zoomAndScrollPanorama = PreferenceManager.get(SLIDER_ZOOM_SCROLL_PANORAMAS),
-                    zoomEffectPercent = PreferenceManager.get(SLIDER_ZOOM_EFFECT),
-                    panEffectPercent = PreferenceManager.get(SLIDER_PAN_EFFECT),
-                    useLargeVideoBuffer = PreferenceManager.get(SLIDER_FORCE_ORIGINAL_VIDEO),
-                    dpadSeeksInVideo = PreferenceManager.get(SLIDER_DPAD_SEEK_IN_VIDEO),
-                    showDateTopLeft = PreferenceManager.get(SLIDER_SHOW_DATE_TOP_LEFT)
-                )
-                sliderViewModel.configuration = config
-                findNavController().navigate(AlbumDetailsFragmentDirections.actionToPhotoSlider())
+                withContext(Dispatchers.Main) {
+                    if (!isAdded) return@withContext
+                    progressBar?.visibility = View.GONE
+                    val config = MediaSliderConfiguration(
+                        if (shuffle) 0 else toSliderItems.indexOfFirst { it.ids().contains(card.id) },
+                        PreferenceManager.get(SLIDER_INTERVAL),
+                        PreferenceManager.get(SLIDER_ONLY_USE_THUMBNAILS),
+                        isVideoSoundEnable = true,
+                        toSliderItems,
+                        loadMore,
+                        { item ->
+                            val index = this@GenericAssetFragment.assets.indexOfFirst { item.ids().contains(it.id) }
+                            if (index >= 0) manualUpdatePosition(index)
+                        },
+                        animationSpeedMillis = PreferenceManager.get(SLIDER_ANIMATION_SPEED),
+                        maxCutOffHeight = PreferenceManager.get(SLIDER_MAX_CUT_OFF_HEIGHT),
+                        maxCutOffWidth = PreferenceManager.get(SLIDER_MAX_CUT_OFF_WIDTH),
+                        glideTransformation = PreferenceManager.get(SLIDER_GLIDE_TRANSFORMATION),
+                        enableSlideAnimation = PreferenceManager.get(SCREENSAVER_ANIMATE_ASSET_SLIDE),
+                        gradiantOverlay = false,
+                        metaDataConfig = PreferenceManager.getAllMetaData(MetaDataScreen.VIEWER),
+                        zoomAndScrollPanorama = PreferenceManager.get(SLIDER_ZOOM_SCROLL_PANORAMAS),
+                        zoomEffectPercent = PreferenceManager.get(SLIDER_ZOOM_EFFECT),
+                        panEffectPercent = PreferenceManager.get(SLIDER_PAN_EFFECT),
+                        useLargeVideoBuffer = PreferenceManager.get(SLIDER_FORCE_ORIGINAL_VIDEO),
+                        dpadSeeksInVideo = PreferenceManager.get(SLIDER_DPAD_SEEK_IN_VIDEO),
+                        showDateTopLeft = PreferenceManager.get(SLIDER_SHOW_DATE_TOP_LEFT),
+                        shuffleOnRepeat = shuffle
+                    )
+                    sliderViewModel.configuration = config
+                    findNavController().navigate(AlbumDetailsFragmentDirections.actionToPhotoSlider())
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Timber.w(e, "Could not prepare album playback")
+                withContext(Dispatchers.Main) {
+                    if (isAdded) Toast.makeText(requireContext(), nl.giejay.android.tv.immich.R.string.could_not_load_assets, Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                withContext(NonCancellable + Dispatchers.Main) { progressBar?.visibility = View.GONE }
             }
         }
     }

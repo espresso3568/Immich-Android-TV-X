@@ -1,5 +1,6 @@
 <!--
   ~ Copyright 2020 Google LLC
+  ~ Modified for Immich TV Plus on 2026-10-20: Plus branding and shuffle strings.
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -15,7 +16,9 @@
   -->
 
 <resources>
-    <string name="app_name" translatable="false">Immich TV</string>
+    <string name="app_name" translatable="false">Immich TV Plus</string>
+    <string name="shuffle_playback">Shuffle playback</string>
+    <string name="shuffle_playback_desc">Play this entire album in random order. Reshuffle after every round; browsing keeps its date order.</string>
 
     <!-- Strings for the "No Firebase" screen -->
     <string name="no_firebase_title">Firebase not configured</string>
@@ -100,7 +103,7 @@
     <string name="metadata">Metadata</string>
 
     <!-- Screensaver  -->
-    <string name="screensaver_set">Set Immich as screensaver</string>
+    <string name="screensaver_set">Set Immich TV Plus as screensaver</string>
     <string name="screensaver_set_select_albums_first">Please set your albums to show first!</string>
     <string name="screensaver_not_possible_title">Not possible to set screensaver</string>
     <string name="screensaver_not_possible">Could not start screensaver for Immich because of invalid Hostname/API key</string>
@@ -120,7 +123,7 @@
     <string name="slide_new_asset_in">Slide the new asset in</string>
     <string name="slide_new_asset_in_desc">Slide the new asset in when transitioning</string>
     <string name="set_albums_screensaver">Set albums to show in screensaver</string>
-    <string name="set_albums_screensaver_desc">Set albums to show in screensaver</string>
+    <string name="set_albums_screensaver_desc">Shuffle all selected albums together on each start and after every complete round.</string>
     <string name="set_albums_screensaver_error">Set the Immich albums to show in the screensaver settings</string>
     <string name="customize_metadata">Customize metadata</string>
     <string name="configure_metadata_screensaver">Configure what to show in screensaver</string>
@@ -231,7 +234,7 @@
     <string name="auth_demo_mode_desc">Login to a demo Immich instance.</string>
 
     <!-- Auth step 2 (GuidedStep) -->
-    <string name="login_immich_description">Login to your Immich server or try a demo.</string>
+    <string name="login_immich_description">Sign in to your Immich server.</string>
     <string name="server_url_hint">Server URL (http[s]://…)</string>
     <string name="disable_ssl_verification">Disable SSL verification</string>
     <string name="disable_ssl_verification_desc">Only use this when you have issues with self-signed certificates!</string>

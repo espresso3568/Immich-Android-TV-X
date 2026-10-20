@@ -1,5 +1,6 @@
 /*
  * Copyright 2020 Google LLC
+ * Modified for Immich TV Plus on 2026-10-20: Plus project name.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +24,7 @@ pluginManagement {
 }
 
 include ':app'
-rootProject.name = "Immich TV"
+rootProject.name = "Immich TV Plus"
 include ':mediaslider:mediaslider'
 
 

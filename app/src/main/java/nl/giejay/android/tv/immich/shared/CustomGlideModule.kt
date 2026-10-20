@@ -15,6 +15,8 @@ import nl.giejay.android.tv.immich.shared.prefs.DISABLE_SSL_VERIFICATION
 import nl.giejay.android.tv.immich.shared.prefs.LiveSharedPreferences
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
 import java.io.InputStream
+import java.io.IOException
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 
 @GlideModule
@@ -41,7 +43,17 @@ class CustomGlideModule : AppGlideModule() {
                     disableSsl,
                     apiKey,
                     // never enable debug mode of responses in glide, too much data
-                    false
+                    false,
+                    apiKeyProvider = { request ->
+                        // Glide can retain a loader after registry replacement or re-login.
+                        // Resolve the current key when sending, and reject old-server requests.
+                        val server = PreferenceManager.hostName.toHttpUrlOrNull()
+                        if (server == null || server.host != request.url.host ||
+                            server.port != request.url.port || server.scheme != request.url.scheme) {
+                            throw IOException("Image request does not match the active Immich server.")
+                        }
+                        PreferenceManager.get(API_KEY)
+                    }
                 )
             )
         } else {

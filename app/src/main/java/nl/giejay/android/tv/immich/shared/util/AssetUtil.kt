@@ -59,16 +59,15 @@ fun List<Asset>.toSliderItems(keepOrder: Boolean, mergePortrait: Boolean): List<
         return (landscapeItems.map { SliderItemViewHolder(it.toSliderItem()) } + portraitSliders).shuffled()
     }
 
-    val queue = this.toMutableList()
     val items = mutableListOf<SliderItemViewHolder>()
-
-    while (queue.isNotEmpty()) {
-        val first = queue.removeAt(0)
-        val second = queue.firstOrNull()
+    var index = 0
+    while (index < size) {
+        val first = this[index++]
+        val second = getOrNull(index)
 
         if (first.isPortraitImage() && second?.isPortraitImage() == true) {
             items.add(SliderItemViewHolder(first.toSliderItem(), second.toSliderItem()))
-            queue.remove(second)
+            index += 1
         } else {
             items.add(SliderItemViewHolder(first.toSliderItem()))
         }
