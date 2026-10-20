@@ -13,6 +13,7 @@ import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.api.ApiClient
 import nl.giejay.android.tv.immich.shared.prefs.API_KEY
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
+import nl.giejay.android.tv.immich.shared.prefs.SCREENSAVER_TYPE
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
 import nl.giejay.mediaslider.util.MediaSliderListener
 import nl.giejay.mediaslider.view.MediaSliderView
@@ -33,6 +34,7 @@ class ScreenSaverService : DreamService(), MediaSliderListener, ScreenSaverAsset
         }
         val apiKey = PreferenceManager.get(API_KEY)
         mediaSliderView = MediaSliderView(this)
+        mediaSliderView!!.setLoading(PreferenceManager.get(SCREENSAVER_TYPE) == ScreenSaverType.ALBUMS)
         mediaSliderView!!.setDefaultExoFactory(
             DefaultHttpDataSource.Factory()
                 .setDefaultRequestProperties(mapOf("x-api-key" to apiKey))
@@ -53,6 +55,7 @@ class ScreenSaverService : DreamService(), MediaSliderListener, ScreenSaverAsset
     }
 
     override fun showScreenSaverMessage(messageRes: Int, longDuration: Boolean) {
+        mediaSliderView?.setLoading(false)
         Toast.makeText(
             this,
             getString(messageRes),

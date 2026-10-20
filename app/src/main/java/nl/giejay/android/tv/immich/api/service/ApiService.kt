@@ -1,6 +1,7 @@
 package nl.giejay.android.tv.immich.api.service
 
 import nl.giejay.android.tv.immich.api.model.Album
+import nl.giejay.android.tv.immich.api.model.AuthenticationValidationResponse
 import nl.giejay.android.tv.immich.api.model.Asset
 import nl.giejay.android.tv.immich.api.model.Memory
 import nl.giejay.android.tv.immich.api.model.PeopleResponse
@@ -19,6 +20,9 @@ import retrofit2.http.Query
 
 
 interface ApiService {
+    @POST("auth/validateToken")
+    suspend fun validateAuthentication(): Response<AuthenticationValidationResponse>
+
     @POST("search/metadata")
     suspend fun listAssets(@Body searchRequest: SearchRequest): Response<SearchResponse>
 

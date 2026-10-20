@@ -1,3 +1,5 @@
+// Modified for Immich TV Plus on 2026-10-20: shuffle rounds and video end-event handling.
+// Original MediaSliderView code remains under Apache-2.0; see mediaslider/LICENSE.md.
 package nl.giejay.mediaslider.view
 
 import android.app.Activity
@@ -44,7 +46,8 @@ class MediaSliderController(
     private val pager: ViewPager,
     /** The centre play/pause overlay indicator shown briefly on slideshow toggle. */
     private val playButtonView: View,
-    private val controllerRootView: View
+    private val controllerRootView: View,
+    private val onShuffleRound: (reverse: Boolean) -> Unit
 ) {
     private lateinit var config: MediaSliderConfiguration
 
@@ -62,6 +65,7 @@ class MediaSliderController(
     private var isSeeking = false
 
     private var reverseSlideShowDirection = false
+    private var shuffleNavigationPending = false
     private val goToNextAssetRunnable = Runnable { goToNextAsset() }
     private val goToPreviousAssetRunnable = Runnable { goToPreviousAsset() }
 
@@ -91,6 +95,8 @@ class MediaSliderController(
     // -------------------------------------------------------------------------
 
     fun onPlaybackStateChanged(playbackState: Int) {
+        if (config.shuffleOnRepeat &&
+            (shuffleNavigationPending || currentPlayer?.playbackState != playbackState)) return
         if (playbackState == Player.STATE_ENDED && slideShowPlaying) {
             if(reverseSlideShowDirection) {
                 goToPreviousAsset()
@@ -116,6 +122,8 @@ class MediaSliderController(
     }
 
     fun onPlayerError(error: PlaybackException) {
+        if (config.shuffleOnRepeat &&
+            (shuffleNavigationPending || currentPlayer?.playerError !== error)) return
         Timber.e(error, "Player error")
         if (slideShowPlaying) {
             goToNextAsset()
@@ -164,6 +172,11 @@ class MediaSliderController(
         }
     }
     fun removeGoToAssetCallbackFromMainHandler(){
+        if (this::config.isInitialized && config.shuffleOnRepeat) {
+            mainHandler.removeCallbacks(goToPreviousAssetRunnable)
+            mainHandler.removeCallbacks(goToNextAssetRunnable)
+            return
+        }
         if(reverseSlideShowDirection) {
             mainHandler.removeCallbacks(goToPreviousAssetRunnable)
         }
@@ -195,8 +208,11 @@ class MediaSliderController(
     // -------------------------------------------------------------------------
 
     fun goToNextAsset() {
+        if (!beginShuffleNavigation()) return
         if (pager.currentItem < pager.adapter!!.count - 1) {
             pager.setCurrentItem(pager.currentItem + 1, config.enableSlideAnimation)
+        } else if (config.shuffleOnRepeat) {
+            onShuffleRound(false)
         } else {
             pager.setCurrentItem(0, config.enableSlideAnimation)
         }
@@ -207,13 +223,34 @@ class MediaSliderController(
     }
 
     fun goToPreviousAsset() {
-        pager.setCurrentItem(
-            (if (0 == pager.currentItem) pager.adapter!!.count else pager.currentItem) - 1,
-            config.enableSlideAnimation
-        )
+        if (!beginShuffleNavigation()) return
+        if (config.shuffleOnRepeat && pager.currentItem == 0) {
+            onShuffleRound(true)
+        } else {
+            pager.setCurrentItem(
+                (if (0 == pager.currentItem) pager.adapter!!.count else pager.currentItem) - 1,
+                config.enableSlideAnimation
+            )
+        }
         if (!isControllerVisible) {
             restorePagerFocus()
         }
+    }
+
+    /** Prevent queued video/timer callbacks from advancing twice during a page replacement. */
+    private fun beginShuffleNavigation(): Boolean {
+        if (!config.shuffleOnRepeat) return true
+        if (shuffleNavigationPending || config.items.isEmpty()) return false
+        shuffleNavigationPending = true
+        cancelNextAssetTimer()
+        val previousPlayer = currentPlayer
+        currentPlayer = null
+        previousPlayer?.stop()
+        return true
+    }
+
+    fun onShufflePageReady() {
+        shuffleNavigationPending = false
     }
 
     // -------------------------------------------------------------------------

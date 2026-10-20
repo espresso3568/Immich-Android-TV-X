@@ -18,6 +18,7 @@ import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.api.ApiClient
 import nl.giejay.android.tv.immich.shared.prefs.API_KEY
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
+import nl.giejay.android.tv.immich.shared.prefs.SCREENSAVER_TYPE
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
 import nl.giejay.mediaslider.view.MediaSliderFragment
 import nl.giejay.mediaslider.view.MediaSliderView
@@ -75,6 +76,7 @@ class ScreenSaverPreviewFragment : MediaSliderFragment(), ScreenSaverAssetLoader
         }
 
         ioScope = CoroutineScope(Job() + Dispatchers.IO)
+        sliderView?.setLoading(PreferenceManager.get(SCREENSAVER_TYPE) == ScreenSaverType.ALBUMS)
         sliderView?.setDefaultExoFactory(
             DefaultHttpDataSource.Factory()
                 .setDefaultRequestProperties(mapOf("x-api-key" to PreferenceManager.get(API_KEY)))
@@ -106,6 +108,7 @@ class ScreenSaverPreviewFragment : MediaSliderFragment(), ScreenSaverAssetLoader
     override val exitWhenNothingToShow: Boolean = true
 
     override fun showScreenSaverMessage(messageRes: Int, longDuration: Boolean) {
+        sliderView?.setLoading(false)
         val context = context ?: return
         Toast.makeText(
             context,

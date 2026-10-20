@@ -46,22 +46,27 @@ class AuthFragmentStep1 : GuidedStepSupportFragment() {
             true,
             1
         )
-        addCheckedAction(
-            actions,
-            ACTION_PHONE_SIGN_IN,
-            getString(R.string.auth_sign_in_by_phone),
-            getString(R.string.auth_sign_in_by_phone_desc),
-            false,
-            1
-        )
-        addCheckedAction(
-            actions,
-            ACTION_DEMO,
-            getString(R.string.auth_demo_mode),
-            getString(R.string.auth_demo_mode_desc),
-            false,
-            1
-        )
+        if (getString(R.string.authentication_url).isNotBlank() &&
+            !getString(R.string.authentication_url).contains("example.invalid")) {
+            addCheckedAction(
+                actions,
+                ACTION_PHONE_SIGN_IN,
+                getString(R.string.auth_sign_in_by_phone),
+                getString(R.string.auth_sign_in_by_phone_desc),
+                false,
+                1
+            )
+        }
+        if (getString(R.string.host_name).isNotBlank() && getString(R.string.api_key).isNotBlank()) {
+            addCheckedAction(
+                actions,
+                ACTION_DEMO,
+                getString(R.string.auth_demo_mode),
+                getString(R.string.auth_demo_mode_desc),
+                false,
+                1
+            )
+        }
     }
 
     override fun onCreateButtonActions(
